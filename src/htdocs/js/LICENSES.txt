@@ -1,0 +1,11 @@
+jquery-1.9.1.js: 
+ * Released under the MIT license
+
+kinetic-v4.3.3.js:
+ * Licensed under the MIT or GPL Version 2 licenses.
+
+enabler.js:
+ * Released under the MIT license
+
+google-rest-server:
+ * Licensed under the Apache License, Version 2.0 (the "License")
