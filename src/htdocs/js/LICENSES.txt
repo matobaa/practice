@@ -4,6 +4,9 @@ jquery-1.9.1.js:
 kinetic-v4.3.3.js:
  * Licensed under the MIT or GPL Version 2 licenses.
 
+kinetic-v4.4.0.js:
+ * Licensed under the MIT or GPL Version 2 licenses.
+
 enabler.js:
  * Released under the MIT license
 

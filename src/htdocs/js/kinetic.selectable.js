@@ -71,13 +71,6 @@ Kinetic.Shape.prototype.select = function(evt) {
   this.getLayer().draw();
 };
 
-Kinetic.Shape.prototype._initShape_original = Kinetic.Shape.prototype._initShape;
-
-Kinetic.Shape.prototype._initShape = function(config) {
-  this._initShape_original(config);
-  this.on('click', this.select);
-}
-  
 Kinetic.Global.extend(Kinetic.Rect, Kinetic.Shape);
 Kinetic.Global.extend(Kinetic.Circle, Kinetic.Shape);
 Kinetic.Global.extend(Kinetic.Wedge, Kinetic.Shape);
@@ -91,5 +84,3 @@ Kinetic.Global.extend(Kinetic.Star, Kinetic.Shape);
 Kinetic.Global.extend(Kinetic.RegularPolygon, Kinetic.Shape);
 Kinetic.Global.extend(Kinetic.Path, Kinetic.Shape);
 Kinetic.Global.extend(Kinetic.TextPath, Kinetic.Shape);
-
-Kinetic.Node.prototype.focus = function() {};

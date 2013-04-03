@@ -7,13 +7,13 @@
  */
 require.config({
   shim: {
-    "kinetic.selectable": ["kinetic-v4.3.3"]
+    "kinetic.selectable": ["kinetic-v4.4.0"]
   },
   waitSeconds: 30 // for Debug
 });
 
 require(
-    ["jquery", "kinetic-v4.3.3", "kinetic.selectable"],
+    ["jquery", "kinetic-v4.4.0", "kinetic.selectable"],
     function($) {
       $(function() {
 
@@ -26,11 +26,11 @@ require(
         var layer = new Kinetic.Layer();
 
         var oval = new Kinetic.Ellipse({
-          x: stage.getWidth() / 2,
-          y: stage.getHeight() / 2,
+          x: stage.getWidth() / 2 + 100,
+          y: stage.getHeight() / 2 + 50,
           radius: {
-            x: 100,
-            y: 50
+            x: 50,
+            y: 100
           },
           fill: 'yellow',
           stroke: 'green',
@@ -38,11 +38,20 @@ require(
           draggable: true,
         });
         layer.add(oval);
-        oval2 = oval.clone();
-        layer.add(oval2);
+        var oval = new Kinetic.Ellipse({
+          x: stage.getWidth() / 2,
+          y: stage.getHeight() / 2,
+          radius: {
+            x: 100,
+            y: 50
+          },
+          fill: 'pink',
+          stroke: 'white',
+          strokeWidth: 1,
+          draggable: false,
+        });
+        layer.add(oval);
         stage.add(layer);
         layer.draw();
-//        oval.on('click', oval.select); // When clicked, Select it
-//        oval2.on('click', oval2.select); // TODO: move to INIT on Shape
       }); // document.ready
     });// retuire.js
