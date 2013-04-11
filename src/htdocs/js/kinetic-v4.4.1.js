@@ -1,9 +1,9 @@
 /**
- * KineticJS JavaScript Framework v4.4.0
+ * KineticJS JavaScript Framework v4.4.1
  * http://www.kineticjs.com/
  * Copyright 2013, Eric Rowell
  * Licensed under the MIT or GPL Version 2 licenses.
- * Date: Mar 26 2013
+ * Date: Apr 07 2013
  *
  * Copyright (C) 2011 - 2013 by Eric Rowell
  *
@@ -25,15 +25,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+/** 
+ * @namespace 
+ */
 var Kinetic = {}; 
 (function() {
-    Kinetic.version = '4.4.0';
+    Kinetic.version = '4.4.1';
     
-    // namespaces without constructors
+    /** 
+     * @namespace 
+     */
     Kinetic.Filters = {};
     Kinetic.DD = {};
     
-    // global namespace
+    /** 
+     * @namespace 
+     */
     Kinetic.Global = {
         stages: [],
         idCounter: 0,
@@ -41,9 +48,41 @@ var Kinetic = {};
         names: {},
         //shapes hash.  rgb keys and shape values
         shapes: {},
+        /**
+         * @method isDragging returns whether or not drag and drop
+         *  is currently active
+         * @methodOf Kinetic.Global
+         */
         isDragging: function() {
-            var dd = Kinetic.DD;   
-            return (!dd || dd.isDragging);
+            var dd = Kinetic.DD;  
+
+            // if DD is not included with the build, then
+            // drag and drop is not even possible
+            if (!dd) {
+                return false;
+            } 
+            // if DD is included with the build
+            else {
+                return dd.isDragging;
+            }
+        },
+        /**
+        * @method isDragReady returns whether or not a drag and drop operation is ready, but may
+        *  not necessarily have started
+        * @methodOf Kinetic.Global
+        */
+        isDragReady: function() {
+            var dd = Kinetic.DD;  
+
+            // if DD is not included with the build, then
+            // drag and drop is not even possible
+            if (!dd) {
+                return false;
+            } 
+            // if DD is included with the build
+            else {
+                return !!dd.node;
+            }
         },
         warn: function(str) {
             /*
@@ -1805,6 +1844,207 @@ var Kinetic = {};
 
 })(Kinetic);
 
+(function(Kinetic) {
+
+	function pixelAt(idata, x, y) {
+		var idx = (y * idata.width + x) * 4;
+		var d = [];
+		d.push(idata.data[idx++], idata.data[idx++], idata.data[idx++], idata.data[idx++]);
+		return d;
+	};
+
+	function rgbDistance(p1, p2) {
+		return Math.sqrt(Math.pow(p1[0] - p2[0], 2) + Math.pow(p1[1] - p2[1], 2) + Math.pow(p1[2] - p2[2], 2));
+	};
+
+	function rgbMean(pTab) {
+		var m = [0, 0, 0];
+
+		for (var i = 0; i < pTab.length; i++) {
+			m[0] += pTab[i][0];
+			m[1] += pTab[i][1];
+			m[2] += pTab[i][2];
+		}
+
+		m[0] /= pTab.length;
+		m[1] /= pTab.length;
+		m[2] /= pTab.length;
+
+		return m;
+	};
+
+	function backgroundMask(idata, config) {
+		var rgbv_no = pixelAt(idata, 0, 0);
+		var rgbv_ne = pixelAt(idata, idata.width - 1, 0);
+		var rgbv_so = pixelAt(idata, 0, idata.height - 1);
+		var rgbv_se = pixelAt(idata, idata.width - 1, idata.height - 1);
+
+
+		var thres = (config && config.threshold) ? config.threshold : 10;
+		if (rgbDistance(rgbv_no, rgbv_ne) < thres && rgbDistance(rgbv_ne, rgbv_se) < thres && rgbDistance(rgbv_se, rgbv_so) < thres && rgbDistance(rgbv_so, rgbv_no) < thres) {
+
+			// Mean color
+			var mean = rgbMean([rgbv_ne, rgbv_no, rgbv_se, rgbv_so]);
+
+			// Mask based on color distance
+			var mask = [];
+			for (var i = 0; i < idata.width * idata.height; i++) {
+				var d = rgbDistance(mean, [idata.data[i * 4], idata.data[i * 4 + 1], idata.data[i * 4 + 2]]);
+				mask[i] = (d < thres) ? 0 : 255;
+			}
+
+			return mask;
+		}
+	};
+
+	function applyMask(idata, mask) {
+		for (var i = 0; i < idata.width * idata.height; i++) {
+			idata.data[4 * i + 3] = mask[i];
+		}
+	};
+
+	function erodeMask(mask, sw, sh) {
+
+		var weights = [1, 1, 1, 1, 0, 1, 1, 1, 1];
+		var side = Math.round(Math.sqrt(weights.length));
+		var halfSide = Math.floor(side / 2);
+
+		var maskResult = [];
+		for (var y = 0; y < sh; y++) {
+			for (var x = 0; x < sw; x++) {
+
+				var so = y * sw + x;
+				var a = 0;
+				for (var cy = 0; cy < side; cy++) {
+					for (var cx = 0; cx < side; cx++) {
+						var scy = y + cy - halfSide;
+						var scx = x + cx - halfSide;
+
+						if (scy >= 0 && scy < sh && scx >= 0 && scx < sw) {
+
+							var srcOff = scy * sw + scx;
+							var wt = weights[cy * side + cx];
+
+							a += mask[srcOff] * wt;
+						}
+					}
+				}
+
+				maskResult[so] = (a === 255 * 8) ? 255 : 0;
+			}
+		}
+
+		return maskResult;
+	};
+
+	function dilateMask(mask, sw, sh) {
+
+		var weights = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+		var side = Math.round(Math.sqrt(weights.length));
+		var halfSide = Math.floor(side / 2);
+
+		var maskResult = [];
+		for (var y = 0; y < sh; y++) {
+			for (var x = 0; x < sw; x++) {
+
+				var so = y * sw + x;
+				var a = 0;
+				for (var cy = 0; cy < side; cy++) {
+					for (var cx = 0; cx < side; cx++) {
+						var scy = y + cy - halfSide;
+						var scx = x + cx - halfSide;
+
+						if (scy >= 0 && scy < sh && scx >= 0 && scx < sw) {
+
+							var srcOff = scy * sw + scx;
+							var wt = weights[cy * side + cx];
+
+							a += mask[srcOff] * wt;
+						}
+					}
+				}
+
+				maskResult[so] = (a >= 255 * 4) ? 255 : 0;
+			}
+		}
+
+		return maskResult;
+	};
+
+	function smoothEdgeMask(mask, sw, sh) {
+
+		var weights = [1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9];
+		var side = Math.round(Math.sqrt(weights.length));
+		var halfSide = Math.floor(side / 2);
+
+		var maskResult = [];
+		for (var y = 0; y < sh; y++) {
+			for (var x = 0; x < sw; x++) {
+
+				var so = y * sw + x;
+				var a = 0;
+				for (var cy = 0; cy < side; cy++) {
+					for (var cx = 0; cx < side; cx++) {
+						var scy = y + cy - halfSide;
+						var scx = x + cx - halfSide;
+
+						if (scy >= 0 && scy < sh && scx >= 0 && scx < sw) {
+
+							var srcOff = scy * sw + scx;
+							var wt = weights[cy * side + cx];
+
+							a += mask[srcOff] * wt;
+						}
+					}
+				}
+
+				maskResult[so] = a;
+			}
+		}
+
+		return maskResult;
+	}
+	
+	Kinetic = Kinetic || {};
+	Kinetic.Filters = Kinetic.Filters || {};
+
+	/**
+	 * Mask Filter
+	 *
+	 * Only crop unicolor background images for instance
+	 *
+	 * @function
+	 * @memberOf Kinetic.Filters
+	 * @param {Object} imageData
+	 * @param {Object} config
+	 * @param {Integer} config.threshold The RGB euclidian distance threshold (default : 10) 
+	 */
+	Kinetic.Filters.Mask = function(idata, config) {
+		// Detect pixels close to the background color
+		var mask = backgroundMask(idata, config);
+		if (mask) {
+			// Erode
+			mask = erodeMask(mask, idata.width, idata.height);
+
+			// Dilate
+			mask = dilateMask(mask, idata.width, idata.height);
+
+			// Gradient
+			mask = smoothEdgeMask(mask, idata.width, idata.height);
+
+			// Apply mask
+			applyMask(idata, mask);
+			
+			// todo : Update hit region function according to mask
+		}
+
+		return idata;
+	};
+
+	window['Kinetic'] = Kinetic;
+
+})(Kinetic);
+
 (function() {
     // CONSTANTS
     var SPACE = ' ',
@@ -1851,7 +2091,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Node = function(config) {
@@ -2817,15 +3058,9 @@ var Kinetic = {};
          *  the scene renderer
          */
         draw: function() {
-            var layer = this.getLayer(),
-                evt = {
+            var evt = {
                     node: this
                 };
-            
-            if(layer && layer.getClearBeforeDraw()) {
-                layer.getCanvas().clear();
-                layer.getHitCanvas().clear();
-            }
             
             this.fire(BEFORE_DRAW, evt);
             this.drawScene();
@@ -3516,9 +3751,6 @@ var Kinetic = {};
      */
     Kinetic.Node.prototype.isDraggable = Kinetic.Node.prototype.getDraggable;
 
-    // listen for capturing phase so that the _endDrag* methods are
-    // called before the stage mouseup event is triggered in order
-    // to render the hit graph just in time to pick up the event
     var html = document.getElementsByTagName('html')[0];
     html.addEventListener('mouseup', Kinetic.DD._endDragBefore, true);
     html.addEventListener('touchend', Kinetic.DD._endDragBefore, true);
@@ -3544,10 +3776,10 @@ var Kinetic = {};
     Kinetic.Transition = function(node, config) {
         var that = this,
             easing = config.easing || 'linear',
-            easingFunc = Kinetic.Tweens[easing];  
+            easingFunc = Kinetic.Tweens[easing],
             duration = config.duration || 0,
             configVal = null,
-            lastTweenIndex = 0;
+            lastTweenIndex = 0,
             obj = {}, 
             x = 0, 
             y = 0; 
@@ -3716,7 +3948,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      * @param {Function} [config.clipFunc] clipping function
 
@@ -4037,7 +4270,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Shape = function(config) {
@@ -4727,7 +4961,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      * @param {Function} [config.clipFunc] clipping function
 
@@ -4815,7 +5050,7 @@ var Kinetic = {};
          */
         clear: function() {
             var layers = this.children,
-                len = length,
+                len = layers.length,
                 n;
                 
             for(n = 0; n < len; n++) {
@@ -5106,10 +5341,9 @@ var Kinetic = {};
         },
         _mousedown: function(evt) {
             this._setPointerPosition(evt);
-        	  var dd = Kinetic.DD,
-        	      go = Kinetic.Global,
-        	      obj = this.getIntersection(this.getPointerPosition()), 
-        	      shape;
+        	var go = Kinetic.Global,
+        	    obj = this.getIntersection(this.getPointerPosition()), 
+        	    shape;
 
             if(obj && obj.shape) {
                 shape = obj.shape;
@@ -5119,7 +5353,7 @@ var Kinetic = {};
             }
 
             //init stage drag and drop
-            if(this.isDraggable() && !dd.node) {
+            if(this.isDraggable() && !go.isDragReady()) {
                 this.startDrag(evt);
             }
         },
@@ -5157,11 +5391,9 @@ var Kinetic = {};
         },
         _touchstart: function(evt) {
           this._setPointerPosition(evt);
-        	var dd = Kinetic.DD,
-        	    go = Kinetic.Global,
+        	var go = Kinetic.Global,
         	    obj = this.getIntersection(this.getPointerPosition()), 
         	    shape;
-        	
             
             evt.preventDefault();
 
@@ -5172,8 +5404,8 @@ var Kinetic = {};
                 shape._handleEvent(TOUCHSTART, evt);
             }
 
-            // init stage drag and drop
-            if(dd && !go.isDragging() && this.isDraggable()) {
+            //init stage drag and drop
+            if(this.isDraggable() && !go.isDragReady()) {
                 this.startDrag(evt);
             }
         },
@@ -5342,7 +5574,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      * @param {Function} [config.clipFunc] clipping function
 
@@ -5382,25 +5615,23 @@ var Kinetic = {};
             }
   
         },
-        /**
-         * set before draw handler
-         * @name beforeDraw
-         * @methodOf Kinetic.Layer.prototype
-         * @param {Function} handler
-         */
-        beforeDraw: function(func) {
-            this.beforeDrawFunc = func;
-            return this;
+        drawScene: function(canvas) {
+            var layer = this.getLayer();
+
+            if(layer && layer.getClearBeforeDraw()) {
+                layer.getCanvas().clear();
+            }
+
+            Kinetic.Container.prototype.drawScene.call(this, canvas);
         },
-        /**
-         * set after draw handler
-         * @name afterDraw
-         * @methodOf Kinetic.Layer.prototype
-         * @param {Function} handler
-         */
-        afterDraw: function(func) {
-            this.afterDrawFunc = func;
-            return this;
+        drawHit: function() {
+            var layer = this.getLayer();
+            
+            if(layer && layer.getClearBeforeDraw()) {
+                layer.getHitCanvas().clear();
+            }
+
+            Kinetic.Container.prototype.drawHit.call(this);
         },
         /**
          * get layer canvas
@@ -5562,7 +5793,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      * @param {Function} [config.clipFunc] clipping function
 
@@ -5642,7 +5874,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Rect = function(config) {
@@ -5764,7 +5997,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Circle = function(config) {
@@ -5883,7 +6117,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Wedge = function(config) {
@@ -5907,20 +6142,9 @@ var Kinetic = {};
             context.closePath();
             canvas.fillStroke(this);
         },
-        /**
-         * set angle in degrees
-         * @name setAngleDeg
-         * @methodOf Kinetic.Wedge.prototype
-         * @param {Number} deg
-         */
         setAngleDeg: function(deg) {
             this.setAngle(Kinetic.Type._degToRad(deg));
         },
-        /**
-         * set angle in degrees
-         * @name getAngleDeg
-         * @methodOf Kinetic.Wedge.prototype
-         */
         getAngleDeg: function() {
             return Kinetic.Type._radToDeg(this.getAngle());
         }
@@ -6046,7 +6270,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Ellipse = function(config) {
@@ -6183,7 +6408,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Image = function(config) {
@@ -6469,7 +6695,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Polygon = function(config) {
@@ -6504,18 +6731,19 @@ var Kinetic = {};
          */
         setPoints: function(val) {
             this.setAttr('points', Kinetic.Type._getPoints(val));
+        },
+        /**
+         * get points array
+         * @name getPoints
+         * @methodOf Kinetic.Polygon.prototype
+         */
+         // NOTE: cannot use getter method because we need to return a new
+         // default array literal each time because arrays are modified by reference
+        getPoints: function() {
+            return this.attrs.points || [];
         }
     };
     Kinetic.Global.extend(Kinetic.Polygon, Kinetic.Shape);
-
-    // add getters setters
-    Kinetic.Node.addGetter(Kinetic.Polygon, 'points', []);
-
-    /**
-     * get points array
-     * @name getPoints
-     * @methodOf Kinetic.Polygon.prototype
-     */
 })();
 
 (function() {
@@ -6615,7 +6843,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Text = function(config) {
@@ -6765,22 +6994,6 @@ var Kinetic = {};
         _getContextFont: function() {
             return this.getFontStyle() + SPACE + this.getFontSize() + PX_SPACE + this.getFontFamily();
         },
-        _expandTextData: function(arr) {
-            var len = arr.length;
-                n = 0, 
-                text = EMPTY_STRING,
-                newArr = [];
-                
-            for (n=0; n<len; n++) {
-                text = arr[n];
-                newArr.push({
-                    text: text,
-                    width: this._getTextSize(text).width                    
-                });
-            }
-                
-            return newArr;
-        },
         _addTextLine: function (line, width, height) {
             return this.textArr.push({text: line, width: width});
         },
@@ -6800,7 +7013,9 @@ var Kinetic = {};
                  height = this.attrs.height,
                  fixedWidth = width !== AUTO,
                  fixedHeight = height !== AUTO,
-                 maxHeightPx = height - this.getPadding() * 2,
+                 padding = this.getPadding(),
+                 maxWidth = width - padding * 2,
+                 maxHeightPx = height - padding * 2,
                  currentHeightPx = 0,
                  wrap = this.getWrap(),
                  shouldWrap = wrap !== NONE,
@@ -6812,7 +7027,7 @@ var Kinetic = {};
              for (var i = 0, max = lines.length; i < max; ++i) {
                  var line = lines[i],
                      lineWidth = this._getTextWidth(line);
-                 if (fixedWidth && lineWidth > width) {
+                 if (fixedWidth && lineWidth > maxWidth) {
                      /* 
                       * if width is fixed and line does not fit entirely
                       * break the line into multiple fitting lines
@@ -6828,7 +7043,7 @@ var Kinetic = {};
                              var mid = (low + high) >>> 1,
                                  substr = line.slice(0, mid + 1),
                                  substrWidth = this._getTextWidth(substr);
-                             if (substrWidth <= width) {
+                             if (substrWidth <= maxWidth) {
                                  low = mid + 1;
                                  match = substr;
                                  matchWidth = substrWidth;
@@ -6865,6 +7080,16 @@ var Kinetic = {};
                                  break;
                              }
                              line = line.slice(low);
+                             if (line.length > 0) {
+                                 // Check if the remaining text would fit on one line
+                                 lineWidth = this._getTextWidth(line);
+                                 if (lineWidth <= maxWidth) {
+                                     // if it does, add the line and break out of the loop
+                                     this._addTextLine(line, lineWidth);
+                                     currentHeightPx += lineHeightPx;
+                                     break;
+                                 }
+                             }
                          } else {
                              // not even one character could fit in the element, abort
                              break;
@@ -7048,7 +7273,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Line = function(config) {
@@ -7085,18 +7311,19 @@ var Kinetic = {};
          */
         setPoints: function(val) {
             this.setAttr('points', Kinetic.Type._getPoints(val));
+        },
+        /**
+         * get points array
+         * @name getPoints
+         * @methodOf Kinetic.Line.prototype
+         */
+         // NOTE: cannot use getter method because we need to return a new
+         // default array literal each time because arrays are modified by reference
+        getPoints: function() {
+            return this.attrs.points || [];
         }
     };
     Kinetic.Global.extend(Kinetic.Line, Kinetic.Shape);
-
-    // add getters setters
-    Kinetic.Node.addGetter(Kinetic.Line, 'points', []);
-
-    /**
-     * get points array
-     * @name getPoints
-     * @methodOf Kinetic.Line.prototype
-     */
 })();
 
 (function() {
@@ -7162,7 +7389,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Spline = function(config) {
@@ -7329,7 +7557,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Blob = function(config) {
@@ -7395,6 +7624,7 @@ var Kinetic = {};
      * @param {String} config.animation animation key
      * @param {Object} config.animations animation map
      * @param {Integer} [config.index] animation index
+     * @param {Image} image image object
      * @param {String} [config.fill] fill color
      * @param {Image} [config.fillPatternImage] fill pattern image
      * @param {Number} [config.fillPatternX]
@@ -7448,12 +7678,13 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Sprite = function(config) {
         this._initSprite(config);
-    };
+    }
 
     Kinetic.Sprite.prototype = {
         _initSprite: function(config) {
@@ -7472,14 +7703,21 @@ var Kinetic = {};
             });
         },
         drawFunc: function(canvas) {
-            var anim = this.attrs.animation, index = this.attrs.index, f = this.attrs.animations[anim][index], context = canvas.getContext(), image = this.attrs.image;
+            var anim = this.getAnimation(), 
+                index = this.getIndex(), 
+                f = this.getAnimations()[anim][index], 
+                context = canvas.getContext(), 
+                image = this.getImage();
 
             if(image) {
                 context.drawImage(image, f.x, f.y, f.width, f.height, 0, 0, f.width, f.height);
             }
         },
         drawHitFunc: function(canvas) {
-            var anim = this.attrs.animation, index = this.attrs.index, f = this.attrs.animations[anim][index], context = canvas.getContext();
+            var anim = this.getAnimation(), 
+                index = this.getIndex(), 
+                f = this.getAnimations()[anim][index], 
+                context = canvas.getContext();
 
             context.beginPath();
             context.rect(0, 0, f.width, f.height);
@@ -7504,14 +7742,14 @@ var Kinetic = {};
             this.anim.node = layer;
 
             this.interval = setInterval(function() {
-                var index = that.attrs.index;
+                var index = that.getIndex();
                 that._updateIndex();
                 if(that.afterFrameFunc && index === that.afterFrameIndex) {
                     that.afterFrameFunc();
                     delete that.afterFrameFunc;
                     delete that.afterFrameIndex;
                 }
-            }, 1000 / this.attrs.frameRate);
+            }, 1000 / this.getFrameRate());
 
             this.anim.start();
         },
@@ -7536,13 +7774,17 @@ var Kinetic = {};
             this.afterFrameFunc = func;
         },
         _updateIndex: function() {
-            var i = this.attrs.index;
-            var a = this.attrs.animation;
-            if(i < this.attrs.animations[a].length - 1) {
-                this.attrs.index++;
+            var index = this.getIndex(),
+                animation = this.getAnimation(),
+                animations = this.getAnimations(),
+                anim = animations[animation], 
+                len = anim.length;
+                 
+            if(index < len - 1) {
+                this.setIndex(index + 1);
             }
             else {
-                this.attrs.index = 0;
+                this.setIndex(0);
             }
         }
     };
@@ -7551,6 +7793,7 @@ var Kinetic = {};
     // add getters setters
     Kinetic.Node.addGetterSetter(Kinetic.Sprite, 'animation');
     Kinetic.Node.addGetterSetter(Kinetic.Sprite, 'animations');
+    Kinetic.Node.addGetterSetter(Kinetic.Sprite, 'image');
     Kinetic.Node.addGetterSetter(Kinetic.Sprite, 'index', 0);
     Kinetic.Node.addGetterSetter(Kinetic.Sprite, 'frameRate', 17);
 
@@ -7569,6 +7812,13 @@ var Kinetic = {};
      */
 
     /**
+     * set image 
+     * @name setImage
+     * @methodOf Kinetic.Sprite.prototype
+     * @param {Image} image 
+     */
+
+    /**
      * set animation frame index
      * @name setIndex
      * @methodOf Kinetic.Sprite.prototype
@@ -7584,6 +7834,12 @@ var Kinetic = {};
     /**
      * get animations object
      * @name getAnimations
+     * @methodOf Kinetic.Sprite.prototype
+     */
+
+    /**
+     * get image
+     * @name getImage
      * @methodOf Kinetic.Sprite.prototype
      */
 
@@ -7655,7 +7911,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Path = function(config) {
@@ -7672,9 +7929,9 @@ var Kinetic = {};
             this.shapeType = 'Path';
             this._setDrawFuncs();
 
-            this.dataArray = Kinetic.Path.parsePathData(this.attrs.data);
+            this.dataArray = Kinetic.Path.parsePathData(this.getData());
             this.on('dataChange', function() {
-                that.dataArray = Kinetic.Path.parsePathData(that.attrs.data);
+                that.dataArray = Kinetic.Path.parsePathData(this.getData());
             });
         },
         drawFunc: function(canvas) {
@@ -7723,10 +7980,6 @@ var Kinetic = {};
     };
     Kinetic.Global.extend(Kinetic.Path, Kinetic.Shape);
 
-    /*
-     * Utility methods written by jfollas to
-     * handle length and point measurements
-     */
     Kinetic.Path.getLineLength = function(x1, y1, x2, y2) {
         return Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
     };
@@ -8279,7 +8532,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.TextPath = function(config) {
@@ -8691,7 +8945,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.RegularPolygon = function(config) {
@@ -8816,7 +9071,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Star = function(config) {
@@ -8910,23 +9166,23 @@ var Kinetic = {};
      attrChangeListLen = ATTR_CHANGE_LIST.length;
         
     /**
-     * Label constructor.&nbsp; Blobs are defined by an array of points and
-     *  a tension
+     * Label constructor.&nbsp; Labels are groups that contain Text and LabelRect shape 
      * @constructor
      * @param {Object} config
-     * @param {String} [config.pointerDirection] can be none, up, right, down, or left.  none is the default
-     * @param {Number} [config.pointerWidth]
-     * @param {Number} [config.pointerHeight]
-      @param {Number} [config.cornerRadius] default is 0
-     * @param {Object} config.text
-     * @param {Object} config.rect
+     * @param {Object} config.text Text config
      * @param {String} [config.text.fontFamily] default is Calibri
      * @param {Number} [config.text.fontSize] in pixels.  Default is 12
      * @param {String} [config.text.fontStyle] can be normal, bold, or italic.  Default is normal
-     * @param {String} config.text.text
+     * @param {String} config.text.text 
      * @param {String} [config.text.align] can be left, center, or right
      * @param {Number} [config.text.padding]
      * @param {Number} [config.text.lineHeight] default is 1
+     * @param {Object} [config.rect] LabelRect config
+     * @param {String} [config.rect.pointerDirection] can be up, right, down, left, or none; the default
+     *  is none.  When a pointer is present, the positioning of the label is relative to the tip of the pointer.
+     * @param {Number} [config.rect.pointerWidth]
+     * @param {Number} [config.rect.pointerHeight]
+     * @param {Number} [config.rect.cornerRadius] 
      * @param {Number} [config.x]
      * @param {Number} [config.y]
      * @param {Number} [config.width]
@@ -8944,7 +9200,8 @@ var Kinetic = {};
      * @param {Object} [config.offset] offset from center point and rotation point
      * @param {Number} [config.offset.x]
      * @param {Number} [config.offset.y]
-     * @param {Boolean} [config.draggable]
+     * @param {Boolean} [config.draggable] makes the node draggable.  When stages are draggable, you can drag and drop
+     *  the entire stage by dragging any portion of the stage
      * @param {Function} [config.dragBoundFunc]
      */
     Kinetic.Label = function(config) {
@@ -9017,11 +9274,36 @@ var Kinetic = {};
             }); 
         }
     };
+
+    /**
+     * get LabelRect shape for the label.  You need to access the LabelRect shape in order to update
+     * the pointer propertie and the corner radius
+     * @name getRect
+     * @methodOf Kinetic.Label.prototype
+     */
+
+    /**
+     * get Text shape for the label.  You need to access the Text shape in order to update
+     * the text properties
+     * @name getText
+     * @methodOf Kinetic.Label.prototype
+     */
     
     Kinetic.Global.extend(Kinetic.Label, Kinetic.Group);
     Kinetic.Node.addGetterSetter(Kinetic.Label, 'text');
     Kinetic.Node.addGetterSetter(Kinetic.Label, 'rect');
-        
+       
+    /**
+     * LabelRect constructor.&nbsp; A LabelRect is similar to a Rect, except that it can be configured
+     *  to have a pointer element that points up, right, down, or left 
+     * @constructor
+     * @param {Object} config
+     * @param {String} [config.pointerDirection] can be up, right, down, left, or none; the default
+     *  is none.  When a pointer is present, the positioning of the label is relative to the tip of the pointer.
+     * @param {Number} [config.pointerWidth]
+     * @param {Number} [config.pointerHeight]
+     * @param {Number} [config.cornerRadius] 
+     */ 
     Kinetic.LabelRect = function(config) {
         this._initLabelRect(config);
     };
@@ -9086,4 +9368,58 @@ var Kinetic = {};
     Kinetic.Node.addGetterSetter(Kinetic.LabelRect, 'pointerWidth', 0);
     Kinetic.Node.addGetterSetter(Kinetic.LabelRect, 'pointerHeight', 0);
     Kinetic.Node.addGetterSetter(Kinetic.LabelRect, 'cornerRadius', 0);
+
+
+    /**
+     * set pointer Direction
+     * @name setPointerDirection
+     * @methodOf Kinetic.LabelRect.prototype
+     * @param {String} pointerDirection can be up, right, down, left, or none.  The
+     *  default is none 
+     */
+
+     /**
+     * set pointer width 
+     * @name setPointerWidth
+     * @methodOf Kinetic.LabelRect.prototype
+     * @param {Number} pointerWidth 
+     */
+
+     /**
+     * set pointer height 
+     * @name setPointerHeight
+     * @methodOf Kinetic.LabelRect.prototype
+     * @param {Number} pointerHeight
+     */
+
+    /**
+     * set corner radius
+     * @name setCornerRadius
+     * @methodOf Kinetic.LabelRect.prototype
+     * @param {Number} corner radius
+     */
+
+    /**
+     * get pointer Direction
+     * @name getPointerDirection
+     * @methodOf Kinetic.LabelRect.prototype
+     */
+
+     /**
+     * get pointer width 
+     * @name getPointerWidth
+     * @methodOf Kinetic.LabelRect.prototype
+     */
+
+     /**
+     * get pointer height 
+     * @name getPointerHeight
+     * @methodOf Kinetic.LabelRect.prototype
+     */
+
+    /**
+     * get corner radius
+     * @name getCornerRadius
+     * @methodOf Kinetic.LabelRect.prototype
+     */
 })();

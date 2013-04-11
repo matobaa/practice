@@ -7,13 +7,13 @@
  */
 require.config({
   shim: {
-    "kinetic.selectable": ["kinetic-v4.4.0"]
+    "kinetic.selectable": ["kinetic-v4.4.1"]
   },
   waitSeconds: 30 // for Debug
 });
 
 require(
-    ["jquery", "kinetic-v4.4.0", "kinetic.selectable"],
+    ["jquery", "kinetic-v4.4.1", "kinetic.selectable"],
     function($) {
       $(function() {
 
@@ -30,7 +30,7 @@ require(
           y: stage.getHeight() / 2 + 50,
           radius: {
             x: 50,
-            y: 100
+            y: 50
           },
           fill: 'yellow',
           stroke: 'green',
@@ -51,7 +51,34 @@ require(
           draggable: false,
         });
         layer.add(oval);
+        var label = new Kinetic.Label({
+          x: stage.getWidth() / 2,
+          y: stage.getHeight() / 2,
+          listening: true,
+          text: {
+            text: 'Tooltip pointing down',
+            fontFamily: 'Calibri',
+            fontSize: 18,
+            padding: 5,
+            fill: 'white'
+          },
+          draggable: true,
+          rect: {
+            fill: 'black',
+            pointerDirection: 'down',
+            pointerWidth: 10,
+            pointerHeight: 10,
+            lineJoin: 'round',
+            shadowColor: 'black',
+            shadowBlur: 10,
+            shadowOffset: 10,
+            shadowOpacity: 0.5
+          }
+        })
+        layer.add(label);
+
         stage.add(layer);
         layer.draw();
+        
       }); // document.ready
     });// retuire.js
