@@ -20,7 +20,7 @@ require(
         var stage = new Kinetic.Stage({
           container: 'container',
           width: 1000,
-          height: 200,
+          height: 600,
         });
 
         var layer = new Kinetic.Layer();
@@ -49,6 +49,17 @@ require(
           stroke: 'white',
           strokeWidth: 1,
           draggable: false,
+        });
+        layer.add(oval);
+        var oval = new Kinetic.Rect({
+          x: stage.getWidth() / 2,
+          y: stage.getHeight() / 2,
+          width: 50,
+          height: 100,
+          fill: 'green',
+          stroke: 'black',
+          strokeWidth: 4,
+          draggable: true,
         });
         layer.add(oval);
         var label = new Kinetic.Label({

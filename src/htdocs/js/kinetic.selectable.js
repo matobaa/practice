@@ -4,11 +4,20 @@
 
   var selection = [];
 
-  var unselect = function() {
-    for ( var n = 0; n < selection.length; n++) {
-      popAttr(selection[n]);
+  var unselect_all = function() {
+    for ( var n = selection.length; n >= 0; n--) {
+      unselect(selection[n]);
     }
   };
+  
+  var unselect = function(node) {
+    index = selection.indexOf(node);
+    if(index == -1) return;
+    popAttr(selection[index]);
+    selection[index].getLayer().draw();
+    selection.splice(index, 1);
+    
+  }
 
   var pushAttr = function(shape, arr) {
     shape.stack = shape.stack || [];
@@ -65,7 +74,7 @@
     };
     
     if (evt.keyCode == 27) { // ESC
-        unselect();
+        unselect_all();
         this.draw();
         return consume(evt);
     }      
@@ -107,7 +116,7 @@
     });
     this.on('click', function(evt) {
       if (indrag) return; // ignore click when dragging 
-      if (!evt.shiftKey) unselect(); // exclusive select
+      if (!evt.shiftKey) unselect_all(); // exclusive select
       evt.targetNode.select(evt);
     });
   }
@@ -115,10 +124,16 @@
   Kinetic.Shape.prototype.select = function(evt) {
     // SYNOPSIS: Shape.pushAttr( {name: value, ...} )
     shape = this;
+    
+    index = selection.indexOf(shape);
+    if(index != -1) {
+      unselect(selection[index]);
+      return;
+    } 
 
     pushAttr(shape, {
-      'dashArray': [6, 6],
-      'dashArrayEnabled': true,
+//      'dashArray': [6, 6],
+//      'dashArrayEnabled': true,
       'stroke': 'red',
       'strokeWidth': this.getStrokeWidth() + 1,
       'strokeEnabled': true,
@@ -128,6 +143,26 @@
     this.getLayer().draw();
   };
 
+  Kinetic.DD._drag_original = Kinetic.DD._drag;
+  Kinetic.DD._drag = function(evt) {
+    var dd = Kinetic.DD, 
+    node = dd.node;
+    if(node) var pb = node.getPosition(); // position before drag tick
+    Kinetic.DD._drag_original(evt);
+    if(node) {
+      var pa = node.getPosition(); // position after drag tick
+      if (selection.indexOf(node) != -1) {
+        for ( var i in selection) {
+          if (selection[i] == node) continue; // skip me
+          if (selection[i].getDraggable()) {
+            selection[i].move(pa.x - pb.x, pa.y - pb.y);  
+          }
+        }
+      }
+    }
+  }
+  
+  
   // Extend Shapes
   Shapes = [Kinetic.Rect, Kinetic.Circle, Kinetic.Wedge, Kinetic.Ellipse,
       Kinetic.Image, Kinetic.Polygon, Kinetic.Text, Kinetic.Line,
