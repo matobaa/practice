@@ -7,7 +7,7 @@
  */
 require.config({
   shim: {
-    "kinetic.selectable": ["kinetic-v4.4.1"]
+    "kinetic.selectable": ["kinetic-v4.4.1"],
   },
   waitSeconds: 30 // for Debug
 });

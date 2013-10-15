@@ -1,6 +1,81 @@
 // Kinetic Extension
 
 (function() {
+  Kinetic.Stage.prototype._keypress = function(evt) {
+    var stage = this;
+    
+    var HANDLED = false;
+    var root = HANDLED;
+    var NOT_HANDLED = !HANDLED;
+    
+    var consume = function(evt) {
+      evt.preventDefault();
+      evt.stopPropagation();
+      evt.returnValue = false;  // for IE
+      evt.cancelBubble = true;  // for IE
+      return root;
+    }
+
+    if (evt.keyCode == 219) { // ^[  // cancel keystroke context
+      stage.handler = root;
+      return consume(evt);
+    }
+    
+    if (evt.keyCode == 27) { // ESC  // clear selection 
+      this.unselect_all();
+      return consume(evt);
+    }
+    
+    var command_DR = function() {   // Draw Rectangle; FIXME: this is Trial Code.
+      var layer = stage.children[0];
+      layer.add(new Kinetic.Rect({
+        x: stage.getWidth() / 2 + 100,
+        y: stage.getHeight() / 2 + 50,
+        width: 100,
+        height: 100,
+        fill: 'yellow',
+        stroke: 'green',
+        strokeWidth: 2,
+        draggable: true,
+      }));
+      stage.draw();
+    }
+
+    var handler_D = function(stage, evt) {
+      switch (evt.keyCode) {
+        case 'R'.charCodeAt(0):
+          command_DR();
+          return stage.handler = consume(evt);
+        default:
+          break;
+      }
+      return NOT_HANDLED;
+    };
+    
+    if(stage.handler && (stage.handler(stage, evt) == HANDLED))
+      return HANDLED;
+    
+    // FIXME: stopgap code
+    map = {'D': {'R': command_DR} }
+    console.log(map);
+    
+    // root key handler
+    switch(evt.keyCode) {    
+      case 'D'.charCodeAt(0): // Draw
+        stage.handler = handler_D;
+        return consume(evt);
+      default:
+        break;
+    }
+    return NOT_HANDLED;
+  };
+
+})();
+
+
+//Kinetic Extension
+
+(function() {
 
   var selection = [];
 
@@ -9,6 +84,8 @@
       unselect(selection[n]);
     }
   };
+  
+  Kinetic.Stage.prototype.unselect_all = unselect_all;
   
   var unselect = function(node) {
     index = selection.indexOf(node);
@@ -38,58 +115,7 @@
     return attrs;
   };
 
-  Kinetic.Stage.prototype._keypress = function(evt) {
-    var stage = this;
-    
-    var consume = function(evt) {
-      evt.preventDefault();
-      evt.stopPropagation();
-      evt.returnValue = false;  // for IE
-      evt.cancelBubble = true;  // for IE
-      return HANDLED;
-    }
-    var HANDLED = false;
-    var NOT_HANDLED = !HANDLED;
-    
-    var handler_D = function(stage, evt) {
-      switch (evt.keyCode) {
-        case 'R'.charCodeAt(0): // Draw Rectangle; FIXME: this is Trial Code.
-          var layer = stage.children[0];
-          layer.add(new Kinetic.Rect({
-            x: stage.getWidth() / 2 + 100,
-            y: stage.getHeight() / 2 + 50,
-            width: 100,
-            height: 100,
-            fill: 'yellow',
-            stroke: 'green',
-            strokeWidth: 2,
-            draggable: true,
-          }));
-          stage.draw();
-          return stage.handler = consume(evt);  // FIXME: cannot clear handler_D for handler
-        default:
-          break;
-      }
-      return NOT_HANDLED;
-    };
-    
-    if (evt.keyCode == 27) { // ESC
-        unselect_all();
-        this.draw();
-        return consume(evt);
-    }      
-    if(stage.handler && (stage.handler(stage, evt) == HANDLED))
-      return HANDLED;
-    
-    switch(evt.keyCode) {    
-      case 'D'.charCodeAt(0): // Draw
-        stage.handler = handler_D;
-        return consume(evt);
-    default:
-      break;
-  }
-  return NOT_HANDLED;
-};
+
 
 //  Kinetic.Stage.prototype._initStage_original = Kinetic.Stage.prototype._initStage;
   Kinetic.Stage.prototype._initStage_original = Kinetic.Stage.prototype._initStage;
@@ -100,6 +126,9 @@
     stage = this;
     $(this.getContent()).keydown(function(e) {
       stage._keypress(e);
+    });
+    this.on('click', function(evt) {
+      console.log(evt); // FIXME: stopgap implementation
     });
   };
 
@@ -116,7 +145,18 @@
     });
     this.on('click', function(evt) {
       if (indrag) return; // ignore click when dragging 
-      if (!evt.shiftKey) unselect_all(); // exclusive select
+      var index = selection.indexOf(evt.targetNode);
+      var found = index != -1;
+      if( found &&  evt.shiftKey) {
+        unselect(selection[index]);
+        return;
+      }
+      if( found && !evt.shiftKey) {
+        var node = selection.splice(index, 1)[0];
+        selection.push(node);
+        return;
+      }
+      if(!found && !evt.shiftKey) unselect_all(); // select new node
       evt.targetNode.select(evt);
     });
   }
@@ -124,16 +164,8 @@
   Kinetic.Shape.prototype.select = function(evt) {
     // SYNOPSIS: Shape.pushAttr( {name: value, ...} )
     shape = this;
-    
-    index = selection.indexOf(shape);
-    if(index != -1) {
-      unselect(selection[index]);
-      return;
-    } 
 
     pushAttr(shape, {
-//      'dashArray': [6, 6],
-//      'dashArrayEnabled': true,
       'stroke': 'red',
       'strokeWidth': this.getStrokeWidth() + 1,
       'strokeEnabled': true,
