@@ -13,14 +13,14 @@ require.config({
 });
 
 require(
-    ["jquery", "kinetic-v4.4.1", "kinetic.selectable"],
+    ["jquery", "kinetic-v4.4.1", "kinetic.MyShape", "kinetic.selectable"],
     function($) {
       $(function() {
 
         var stage = new Kinetic.Stage({
           container: 'container',
           width: 1000,
-          height: 600,
+          height: 300,
         });
 
         var layer = new Kinetic.Layer();
@@ -35,20 +35,21 @@ require(
           fill: 'yellow',
           stroke: 'green',
           strokeWidth: 2,
-          draggable: true,
+          draggable: true
         });
         layer.add(oval);
-        var oval = new Kinetic.Ellipse({
+
+        var oval = new Kinetic.Star({
           x: stage.getWidth() / 2,
           y: stage.getHeight() / 2,
-          radius: {
-            x: 100,
-            y: 50
-          },
+          numPoints: 5,
+          innerRadius: 20,
+          outerRadius: 50,
           fill: 'pink',
           stroke: 'white',
           strokeWidth: 1,
-          draggable: false,
+          draggable: true,
+          rotationDeg: 90
         });
         layer.add(oval);
         var oval = new Kinetic.Rect({
@@ -59,34 +60,34 @@ require(
           fill: 'green',
           stroke: 'black',
           strokeWidth: 4,
-          draggable: true,
+          draggable: true
         });
         layer.add(oval);
-        var label = new Kinetic.Label({
-          x: stage.getWidth() / 2,
-          y: stage.getHeight() / 2,
-          listening: true,
-          text: {
-            text: 'Tooltip pointing down',
-            fontFamily: 'Calibri',
-            fontSize: 18,
-            padding: 5,
-            fill: 'white'
-          },
-          draggable: true,
-          rect: {
-            fill: 'black',
-            pointerDirection: 'down',
-            pointerWidth: 10,
-            pointerHeight: 10,
-            lineJoin: 'round',
-            shadowColor: 'black',
-            shadowBlur: 10,
-            shadowOffset: 10,
-            shadowOpacity: 0.5
-          }
-        })
-        layer.add(label);
+//        var label = new Kinetic.Label({
+//          x: stage.getWidth() / 2,
+//          y: stage.getHeight() / 2,
+//          listening: true,
+//          text: {
+//            text: 'Tooltip pointing down',
+//            fontFamily: 'Calibri',
+//            fontSize: 18,
+//            padding: 5,
+//            fill: 'white'
+//          },
+//          draggable: true,
+//          rect: {
+//            fill: 'black',
+//            pointerDirection: 'down',
+//            pointerWidth: 10,
+//            pointerHeight: 10,
+//            lineJoin: 'round',
+//            shadowColor: 'black',
+//            shadowBlur: 10,
+//            shadowOffset: 10,
+//            shadowOpacity: 0.5
+//          }
+//        })
+//        layer.add(label);
 
         stage.add(layer);
         layer.draw();

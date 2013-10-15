@@ -1,7 +1,9 @@
 // Kinetic Extension
 
 (function() {
+  
   Kinetic.Stage.prototype._keypress = function(evt) {
+
     var stage = this;
     
     var HANDLED = false;
@@ -41,10 +43,25 @@
       stage.draw();
     }
 
+    var command_AR = function(stage, evt) {  // Align Right; FIXME: this is Trial Code
+      stage.align_right();
+    }
+
     var handler_D = function(stage, evt) {
       switch (evt.keyCode) {
         case 'R'.charCodeAt(0):
           command_DR();
+          return stage.handler = consume(evt);
+        default:
+          break;
+      }
+      return NOT_HANDLED;
+    };
+
+    var handler_A = function(stage, evt) {
+      switch (evt.keyCode) {
+        case 'R'.charCodeAt(0):
+          command_AR(stage, evt);
           return stage.handler = consume(evt);
         default:
           break;
@@ -64,6 +81,9 @@
       case 'D'.charCodeAt(0): // Draw
         stage.handler = handler_D;
         return consume(evt);
+      case 'A'.charCodeAt(0): // Align
+        stage.handler = handler_A;
+        return consume(evt);
       default:
         break;
     }
@@ -76,16 +96,34 @@
 //Kinetic Extension
 
 (function() {
-
+  
+  // local functions
   var selection = [];
 
   var unselect_all = function() {
-    for ( var n = selection.length; n >= 0; n--) {
+    for ( var n = selection.length - 1; n >= 0; n--) {
       unselect(selection[n]);
     }
   };
+
+  var align_right = function() {
+    var alignto;
+    var node;
+    var pos;
+    alignto = selection[selection.length - 1];
+    if(!alignto) return;
+    alignto = alignto.getX() + alignto.getWidth();
+    for ( var n = selection.length - 2; n >= 0; n--) {
+      node = selection[n];
+      pos = node.getPosition();
+      pos.x = alignto - node.getWidth();
+      node.setPosition(pos);
+    }
+    node && node.getLayer().draw();
+  }
   
-  Kinetic.Stage.prototype.unselect_all = unselect_all;
+  Kinetic.Stage.prototype.unselect_all = unselect_all; // called by KeyHandler
+  Kinetic.Stage.prototype.align_right = align_right; // called by KeyHandler
   
   var unselect = function(node) {
     index = selection.indexOf(node);
@@ -93,7 +131,6 @@
     popAttr(selection[index]);
     selection[index].getLayer().draw();
     selection.splice(index, 1);
-    
   }
 
   var pushAttr = function(shape, arr) {
@@ -115,51 +152,48 @@
     return attrs;
   };
 
+  Kinetic.Stage.prototype._initStage = (function(wrapped) {
+    return function(config) {
+      wrapped.apply(this, arguments);
+      this.getContent().setAttribute('tabindex', 0);
+      stage = this;
+      $(this.getContent()).keydown(function(e) {
+        stage._keypress(e);
+      });
+      this.on('click', function(evt) {
+        console.log(evt); // FIXME: stopgap implementation
+      });
+    };
+  })(Kinetic.Stage.prototype._initStage);
 
-
-//  Kinetic.Stage.prototype._initStage_original = Kinetic.Stage.prototype._initStage;
-  Kinetic.Stage.prototype._initStage_original = Kinetic.Stage.prototype._initStage;
-
-  Kinetic.Stage.prototype._initStage = function(config) {
-    this._initStage_original(config);
-    this.getContent().setAttribute('tabindex', 0);
-    stage = this;
-    $(this.getContent()).keydown(function(e) {
-      stage._keypress(e);
-    });
-    this.on('click', function(evt) {
-      console.log(evt); // FIXME: stopgap implementation
-    });
-  };
-
-  Kinetic.Shape.prototype._initShape_original = Kinetic.Shape.prototype._initShape;
-
-  Kinetic.Shape.prototype._initShape = function(config) {
-    this._initShape_original(config);
-    var indrag = false;
-    this.on('dragstart', function(evt) {
-      indrag = true;
-    });
-    this.on('dragend', function(evt) {
-      indrag = false;
-    });
-    this.on('click', function(evt) {
-      if (indrag) return; // ignore click when dragging 
-      var index = selection.indexOf(evt.targetNode);
-      var found = index != -1;
-      if( found &&  evt.shiftKey) {
-        unselect(selection[index]);
-        return;
-      }
-      if( found && !evt.shiftKey) {
-        var node = selection.splice(index, 1)[0];
-        selection.push(node);
-        return;
-      }
-      if(!found && !evt.shiftKey) unselect_all(); // select new node
-      evt.targetNode.select(evt);
-    });
-  }
+  Kinetic.Shape.prototype._initShape = (function(wrapped) {
+    return function(config) {
+      wrapped.apply(this, arguments);
+      var indrag = false;
+      this.on('dragstart', function(evt) {
+        indrag = true;
+      });
+      this.on('dragend', function(evt) {
+        indrag = false;
+      });
+      this.on('click', function(evt) {
+        if (indrag) return; // ignore click when dragging 
+        var index = selection.indexOf(evt.targetNode);
+        var found = index != -1;
+        if( found &&  evt.shiftKey) {
+          unselect(selection[index]);
+          return;
+        }
+        if( found && !evt.shiftKey) {
+          var node = selection.splice(index, 1)[0];
+          selection.push(node);  // move clicked node to last of selection
+          return;
+        }
+        if(!found && !evt.shiftKey) unselect_all(); // select new node
+        evt.targetNode.select(evt);
+      });
+    }
+  })(Kinetic.Shape.prototype._initShape);
 
   Kinetic.Shape.prototype.select = function(evt) {
     // SYNOPSIS: Shape.pushAttr( {name: value, ...} )
@@ -175,24 +209,25 @@
     this.getLayer().draw();
   };
 
-  Kinetic.DD._drag_original = Kinetic.DD._drag;
-  Kinetic.DD._drag = function(evt) {
-    var dd = Kinetic.DD, 
-    node = dd.node;
-    if(node) var pb = node.getPosition(); // position before drag tick
-    Kinetic.DD._drag_original(evt);
-    if(node) {
-      var pa = node.getPosition(); // position after drag tick
-      if (selection.indexOf(node) != -1) {
-        for ( var i in selection) {
-          if (selection[i] == node) continue; // skip me
-          if (selection[i].getDraggable()) {
-            selection[i].move(pa.x - pb.x, pa.y - pb.y);  
+  Kinetic.DD._drag = (function(wrapped) {
+    return function(evt) {
+      var dd = Kinetic.DD, 
+      node = dd.node;
+      if(node) var pb = node.getPosition(); // position before drag tick
+      wrapped.apply(Kinetic.DD, arguments);
+      if(node) {
+        var pa = node.getPosition(); // position after drag tick
+        if (selection.indexOf(node) != -1) {
+          for ( var i in selection) {
+            if (selection[i] == node) continue; // skip me
+            if (selection[i].getDraggable()) {
+              selection[i].move(pa.x - pb.x, pa.y - pb.y);  
+            }
           }
         }
       }
     }
-  }
+  })(Kinetic.DD._drag);
   
   
   // Extend Shapes
