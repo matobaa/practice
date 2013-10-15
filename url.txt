@@ -1,0 +1,21 @@
+GAE: SaaS Platform, Python 2.7
+appengine-rest-server RESTful server-side logic for GAE/python
+or kay-framework: server-side framework support for REST or others
+
+
+backbone.js: Javascript MVC framework support for some design patterns
+underscore.js: wrapper methods for arrays, like as ruby
+kineticjs: draw libraries, widgets framework
+jquery: supports conviniance methods, AJAX, animation, plugin base
+jquery UI: draggable, droppable, resizable, selectable!, Sortable, widgets.
+
+
+references:
+https://developers.google.com/appengine/docs/python/gettingstartedpython27/helloworld?hl=ja
+https://developers.google.com/appengine/docs/python/python25/migrate27
+http://d.hatena.ne.jp/masayuki14/20110720#1311144772
+
+http://backbonejs.org/
+http://qiita.com/items/5acef8dd49f67fd7813c
+
+

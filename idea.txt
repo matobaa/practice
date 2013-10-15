@@ -1,0 +1,37 @@
+GVI
+
+KineticJSで作った widgets を jQuery UI で select, drag, Copy&Paste, align とかしてみたい
+
+Requirements:
+widgets はアドオンできるように
+操作はコマンドJSONオブジェクトにラップしてキューに積み込み、RESTサーバに送る。
+ どの単位をコマンドにする? DnDやAlignも?
+ viコマンドレベルがよさそう
+ 
+RESTサーバはECHOして配信できるように
+ millisec 程度の時刻をコマンドに乗せる
+ 受信クライアントもつくらないとかー
+ ペアワークもできるかもっ
+
+widgets libraries
+
+jqueryuiの widgets factory てなんだ? kineticjs の競合かも
+
+ライセンスは?
+BSDかMITにしたい
+
+kineticjs
+backbone
+jquery
+jqueryui
+gae 
+gae-rest-server ASL2.0
+
+どこで?
+githubか
+bitbucketか
+
+
+canvasか -> kinetic
+divか -> jqueryui.widgets
+
